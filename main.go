@@ -11,11 +11,8 @@ import (
 )
 
 var (
-	ReadingsArray []*pidusage.SysInfo
-	Flag          bool
-	FileOpener    *os.File
-	FileWriter    *bufio.Writer
-	Error         error
+	Flag       bool
+	FileWriter *bufio.Writer
 )
 
 func doEvery(d time.Duration, pID int, f func(_ time.Time, pID int)) {
@@ -33,42 +30,36 @@ func doEvery(d time.Duration, pID int, f func(_ time.Time, pID int)) {
 		}
 	}
 }
+func SaveReadings(reading string, writer *bufio.Writer) {
+	//Stream the output to a csv
+	// make a buffer to keep chunks that are read
+	buf := []byte(reading)
 
+	//Add the readings on the buffer
+	// Write the chunk to the file
+	if _, err := writer.Write(buf); err != nil {
+		panic(err)
+	}
+	//Keep flushing the data to the file
+	if err := writer.Flush(); err != nil {
+		panic(err)
+	}
+
+}
 func takeReadings(t time.Time, pID int) {
 	sysInfo, err := pidusage.GetStat(pID)
 	if err != nil {
 		panic(err)
 	}
-	ReadingsArray = append(ReadingsArray, sysInfo)
 
-	//Stream the output to a csv
-	// make a buffer to keep chunks that are read
-	buf := []byte("Yash Mehrotra")
-	//Add the readings on the buffer
-	// Write the chunk to the file
-	if _, err := FileWriter.Write(buf); err != nil {
-		panic(err)
-	}
-	//Keep flushing the data to the file
-	if err := FileWriter.Flush(); err != nil {
-		panic(err)
-	}
+	//Create the entry
+	currentTime := time.Now()
+	cpuEntry := fmt.Sprintf("%0.2f", sysInfo.CPU)
+	memEntry := fmt.Sprintf("%0.2f", sysInfo.Memory/1024)
+	csvEntry := cpuEntry + "," + memEntry + "," + currentTime.Format("2006-01-02 15:04:05") + "\n"
 
-	// for {
-	// 	// read a chunk
-	// 	//n, err := r.Read(buf)
-	// 	if err != nil && err != io.EOF {
-	// 		panic(err)
-	// 	}
-	// 	if n == 0 {
-	// 		break
-	// 	}
-
-	// 	// write a chunk
-	// 	if _, err := w.Write(buf[:n]); err != nil {
-	// 		panic(err)
-	// 	}
-	// }
+	//Save to the CSV
+	SaveReadings(csvEntry, FileWriter)
 
 }
 
@@ -107,6 +98,9 @@ func main() {
 	// Assign to the global writer
 	FileWriter = bufio.NewWriter(fileOpener)
 
-	doEvery(5*time.Second, 3181, takeReadings)
+	//Add the header values
+	SaveReadings("CPU(%),Memory(kb),Time \n", FileWriter)
+
+	doEvery(1*time.Second, 3181, takeReadings)
 
 }
