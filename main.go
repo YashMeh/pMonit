@@ -8,21 +8,17 @@ import (
 	"time"
 
 	"github.com/struCoder/pidusage"
-)
-
-var (
-	Flag       bool
-	FileWriter *bufio.Writer
+	"github.com/yashmeh/memMonit/store"
 )
 
 func doEvery(d time.Duration, pID int, f func(_ time.Time, pID int)) {
 	for x := range time.Tick(d) {
-		if !Flag {
+		if !store.Flag {
 			f(x, pID)
 		} else {
 			fmt.Println("Gracefully exiting")
 			//Flush the buffer on the writer in case someone stops midway
-			if err := FileWriter.Flush(); err != nil {
+			if err := store.FileWriter.Flush(); err != nil {
 				panic(err)
 			}
 			fmt.Println("Bye bye !!")
@@ -30,22 +26,7 @@ func doEvery(d time.Duration, pID int, f func(_ time.Time, pID int)) {
 		}
 	}
 }
-func SaveReadings(reading string, writer *bufio.Writer) {
-	//Stream the output to a csv
-	// make a buffer to keep chunks that are read
-	buf := []byte(reading)
 
-	//Add the readings on the buffer
-	// Write the chunk to the file
-	if _, err := writer.Write(buf); err != nil {
-		panic(err)
-	}
-	//Keep flushing the data to the file
-	if err := writer.Flush(); err != nil {
-		panic(err)
-	}
-
-}
 func takeReadings(t time.Time, pID int) {
 	sysInfo, err := pidusage.GetStat(pID)
 	if err != nil {
@@ -59,12 +40,17 @@ func takeReadings(t time.Time, pID int) {
 	csvEntry := cpuEntry + "," + memEntry + "," + currentTime.Format("2006-01-02 15:04:05") + "\n"
 
 	//Save to the CSV
-	SaveReadings(csvEntry, FileWriter)
+	store.SaveReadings(csvEntry, store.FileWriter)
 
 }
 
 func main() {
-
+	//Accept processId,interval,fileName
+	pID, iter, fileName, err := store.HandleInput(os.Args)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
 	//Go routine to read custom command from CLI
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
@@ -76,14 +62,14 @@ func main() {
 			text = strings.Replace(text, "\n", "", -1)
 
 			if strings.Compare("q", text) == 0 {
-				Flag = true
+				store.Flag = true
 			}
 		}
 
 	}()
 
 	// Open the file
-	fileOpener, err := os.Create("output.txt")
+	fileOpener, err := os.Create(fileName)
 	//Panic the function in case of error
 	if err != nil {
 		panic(err)
@@ -96,11 +82,11 @@ func main() {
 		}
 	}()
 	// Assign to the global writer
-	FileWriter = bufio.NewWriter(fileOpener)
+	store.FileWriter = bufio.NewWriter(fileOpener)
 
 	//Add the header values
-	SaveReadings("CPU(%),Memory(kb),Time \n", FileWriter)
+	store.SaveReadings("CPU(%),Memory(kb),Time \n", store.FileWriter)
 
-	doEvery(1*time.Second, 3181, takeReadings)
+	doEvery(time.Duration(iter)*time.Second, pID, takeReadings)
 
 }
